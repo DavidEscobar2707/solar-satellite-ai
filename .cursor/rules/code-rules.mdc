@@ -1,0 +1,52 @@
+# Solar Panels Lead Generation AI – Project Rules
+
+## General Principles
+- Apply SOLID, KISS, and DRY methodologies throughout the codebase.
+- All services should be stateless and use FastAPI + LangChain for backend orchestration.
+- Write modular, testable, and maintainable components for each workflow step.
+- Use type hints, docstrings, and keep API endpoints well documented.
+- Create a `/docs` directory with: product requirements, system architecture diagrams, and API specs.
+
+## Project Workflow Rules
+
+### 1. Input Handling
+- Accept user location requests for any US region (e.g., Carmel Valley, San Diego).
+- Validate location format using Mapbox API conventions; reject malformed input.
+- Query Mapbox for minimum zoom, extracting 20 unique localizations within the main area.
+
+### 2. Image Acquisition & Processing
+- Retrieve satellite imagery for each selected location using Mapbox API.
+- Store raw images securely with traceable filenames for audit purposes.
+
+### 3. Roof Analysis (LLM + Vision)
+- Run images through selected LLM vision agent (LangChain or LangGraph, pending performance benchmarks).
+- Analyze roofs for presence/absence of solar panels.
+- Use automated tagging: `solar_present`, `solar_absent`, `uncertain`.
+
+### 4. Lead Qualification & Filtering
+- Filter results for homes in top ZIP codes by wealth/income percentile (external APIs for enrichment allowed).
+- Return high-quality leads (solar_absent, wealthy neighborhoods) for outreach.
+
+### 5. Output Packaging & Delivery
+- Expose qualified lead groups via FastAPI endpoints (`/leads`), with downloadable CSV/JSON formats.
+- Include metadata: address, wealth percentile, confidence score.
+
+## Development & Documenting Standards
+
+- Every new feature must be documented in `/docs/blueprints` before implementation.
+- All agents should reference context files via `@file` or `@folder` symbols for efficiency.
+- Store API credentials and secrets in `.env`; never commit sensitive data.
+- Ensure compliance with data privacy standards and Mapbox/LLM service licenses.
+
+## Technology Choices
+
+- Backend: Python, FastAPI, LangChain (preferred for broader documentation/community support)
+- Vision API: LangChain or LangGraph (choose based on documentation completeness and reliability in satellite image tasks)
+- Mapping: Mapbox API v4+
+- Data enrichment: US Census, wealth/income APIs
+
+## Code Review & Acceptance
+
+- Minimum 80% test coverage before merging.
+- CI/CD checks for linting, formatting, security, and privacy compliance.
+- Document all endpoints and agents in `/docs/APIs`.
