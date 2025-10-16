@@ -1,11 +1,11 @@
 # System Architecture & Folder Layout
 
 flowchart TD
-A[User Input] --> B[Mapbox Image Retrieval]
-B --> C[LangChain Vision Agent]
-C --> D[Wealth Enrichment API]
-D --> E[Lead Filter & Scoring]
-E --> F[FastAPI /leads Endpoint]
+ A[User Input: locality/city/ZIP] --> Z[Zillow API: property search]
+ Z --> M[Mapbox Static Images: per-property satellite tile]
+ M --> V[OpenAI Vision: solar panel detection]
+ V --> L[Lead Filter & Scoring]
+ L --> E[FastAPI /api/v1/leads Endpoint]
 
 text
 
@@ -15,9 +15,9 @@ solar-satellite-ai/
 └── backend/
 ├── src/solar_ai_backend/
 │ ├── api/ # FastAPI routers
-│ ├── services/ # Mapbox fetch, LLM inference, enrichment
+│ ├── services/ # Zillow ingestion, Mapbox imagery, OpenAI vision, enrichment
 │ ├── schemas/ # Pydantic models
-│ ├── core/ # LangChain context managers
+│ ├── core/ # Inference/runtime utilities
 │ ├── models/ # Vision & data classes
 │ └── config.py # Env & constants loader
 ├── tests/ # Unit & integration tests

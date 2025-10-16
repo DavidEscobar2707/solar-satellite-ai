@@ -1,21 +1,21 @@
 # Solar Panel Lead Generator AI
 
 ## Vision
-Automate satellite‐based lead generation for solar panel installers by identifying wealthy U.S. neighborhoods without existing rooftop panels.
+Automate lead generation for solar installers by finding residential properties in a target area that likely do not have rooftop solar, prioritizing high-value homes.
 
 ## Goals
-- Accept any U.S. location (e.g., Carmel Valley, San Diego)
-- Fetch 20 high‐resolution satellite images via Mapbox
-- Analyze roofs with a LangChain vision agent to detect solar panels
-- Enrich results with wealth percentile data
-- Deliver CSV/JSON lead lists of affluent homes lacking solar panels
+- Accept any U.S. `location` (city/ZIP)
+- Discover properties via Zillow API with coordinates and attributes
+- Fetch high-resolution satellite imagery per property via Mapbox
+- Detect solar presence using OpenAI Vision (`gpt-4o`/`gpt-4o-mini`)
+- Return ranked JSON leads for sales workflows
 
 ## Scope
-- **Input:** User location string  
-- **Processing:** Mapbox image retrieval → LLM vision analysis → data enrichment  
-- **Output:** `/leads` endpoint returning qualified homes  
+- **Input:** `location` and optional filters (beds, baths, propertyType, max_properties)  
+- **Processing:** Zillow property discovery → Mapbox imagery → OpenAI Vision classification → lead scoring  
+- **Output:** `POST /api/v1/leads` returning property-level results  
 
 ## Success Metrics
-- ≥90% accuracy in panel detection  
-- Lead lists generated in <30s per request  
-- 80% user satisfaction from pilot vendors  
+- ≥90% agreement on solar presence vs. human labelers  
+- <30s end-to-end latency for 20 properties  
+- ≥80% vendor satisfaction in pilot  
