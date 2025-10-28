@@ -106,7 +106,7 @@ class ImageSize(BaseModel):
 
 
 class ImageryParams(BaseModel):
-    zoom: int = Field(default=18, ge=14, le=22)
+    zoom: int = Field(default=20, ge=20, le=20)
     size: ImageSize = Field(default_factory=ImageSize)
 
 
@@ -137,7 +137,7 @@ class ZillowMeta(BaseModel):
 
 
 class ImageryMeta(BaseModel):
-    mapbox_url: str
+    image_url: str
     zoom: int
     size: ImageSize
 

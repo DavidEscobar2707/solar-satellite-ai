@@ -12,6 +12,7 @@ class Settings:
     def __init__(self) -> None:
         self.environment: str = os.getenv("ENV", "development")
         self.mapbox_access_token: Optional[str] = os.getenv("MAPBOX_ACCESS_TOKEN")
+        self.google_maps_api_key: Optional[str] = os.getenv("GOOGLE_MAPS_API_KEY")
         self.openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY")
         # Zillow API configuration
         self.zillow_api_key: Optional[str] = os.getenv("ZILLOW_API_KEY")
@@ -26,13 +27,13 @@ class Settings:
         self.mapbox_marker: str = os.getenv("MAPBOX_MARKER", "pin-s+ff0000")
         # Vision API configuration
         self.vision_model: str = os.getenv("VISION_MODEL", "gpt-4o-mini")
-        self.vision_confidence_threshold: float = float(os.getenv("VISION_CONFIDENCE_THRESHOLD", "0.6"))
+        self.vision_confidence_threshold: float = float(os.getenv("VISION_CONFIDENCE_THRESHOLD", "0.4"))  # Lowered to include more uncertain properties as leads
         self.vision_timeout_seconds: float = float(os.getenv("VISION_TIMEOUT_SECONDS", "15"))
         # Vision caching to avoid duplicate OpenAI calls for the same image
         self.vision_cache_enabled: bool = os.getenv("VISION_CACHE_ENABLED", "true").lower() in ("1", "true", "yes")
         self.vision_cache_ttl_seconds: int = int(os.getenv("VISION_CACHE_TTL_SECONDS", "3600"))
         # Endpoint defaults
-        self.leads_max_properties: int = int(os.getenv("LEADS_MAX_PROPERTIES", "2"))
+        self.leads_max_properties: int = int(os.getenv("LEADS_MAX_PROPERTIES", "50"))  # Increased to ensure enough properties for filtering
 
 
 @lru_cache(maxsize=1)

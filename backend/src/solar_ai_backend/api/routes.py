@@ -20,7 +20,7 @@ from ..schemas.models import (
     ImageryMeta,
     VisionMeta,
 )
-from ..services.mapbox_client import MapboxClient
+from ..services.google_maps_client import GoogleMapsClient
 from ..services.vision_agent import OpenAIVisionService
 from ..services.enrichment import ZillowClient, LeadScorer
 from ..utils.excel_export import leads_to_excel_b64, leads_to_excel_bytes, leads_to_csv_bytes, leads_to_csv_b64
@@ -30,16 +30,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _get_mapbox_client() -> MapboxClient:
+def _get_maps_client() -> GoogleMapsClient:
     settings = get_settings()
-    if not settings.mapbox_access_token:
-        raise HTTPException(status_code=500, detail="MAPBOX_ACCESS_TOKEN not configured")
-    return MapboxClient(
-        access_token=settings.mapbox_access_token,
-        image_size_px=settings.mapbox_image_size,
-        style=settings.mapbox_style,
-        country_filter=settings.mapbox_country_filter,
-    )
+    if not settings.google_maps_api_key:
+        raise HTTPException(status_code=500, detail="GOOGLE_MAPS_API_KEY not configured")
+    return GoogleMapsClient(api_key=settings.google_maps_api_key)
 
 
 def _get_zillow_client() -> ZillowClient:
@@ -60,7 +55,7 @@ def _get_vision_service() -> OpenAIVisionService:
 @router.post("/validate-location", response_model=LocationResponse)
 def validate_location(payload: LocationRequest) -> LocationResponse:
     try:
-        client = _get_mapbox_client()
+        client = _get_maps_client()
         lon, lat = client.validate_location(payload.location)
     except ValueError as ve:
         logger.info("Validation failed for location '%s': %s", payload.location, ve)
@@ -106,7 +101,7 @@ def validate_location(payload: LocationRequest) -> LocationResponse:
 
 @router.post("/generate-lead", response_model=LeadGenerationResponse)
 def generate_lead(payload: LeadGenerationRequest) -> LeadGenerationResponse:
-    client = _get_mapbox_client()
+    client = _get_maps_client()
     try:
         lon, lat = client.validate_location(payload.location)
     except ValueError as ve:
@@ -166,38 +161,54 @@ def create_leads(payload: LeadsEndpointRequest) -> LeadsEndpointResponse:
     size_w = payload.imagery.size.w if payload.imagery else settings.mapbox_image_size
     size_h = payload.imagery.size.h if payload.imagery else settings.mapbox_image_size
 
-    # Zillow property discovery
-    zillow = _get_zillow_client()
-    try:
-        properties = zillow.search_properties(
-            location=payload.location,
-            max_properties=max_props,
-            filters=(payload.zillow_filters.model_dump() if payload.zillow_filters else None),
-        )
-    except ValueError as ve:
-        raise HTTPException(status_code=502, detail=str(ve))
-    finally:
-        zillow.close()
+    # Fetch leads in batches until we have enough
+    target_leads = payload.max_properties or settings.leads_max_properties
+    all_properties = []
+    batch_size = 50  # Start with 50 and increase if needed
+    max_attempts = 5  # Prevent infinite loops
+    page = 1  # Start with page 1
 
-    # Build imagery URLs per property
-    mapbox = _get_mapbox_client()
+    zillow = _get_zillow_client()
+    while len(all_properties) < target_leads * 2 and page <= max_attempts:  # Fetch extra to account for filtering
+        try:
+            batch = zillow.search_properties(
+                location=payload.location,
+                max_properties=batch_size,
+                filters=(payload.zillow_filters.model_dump() if payload.zillow_filters else None),
+                page=page,
+            )
+            all_properties.extend(batch)
+            logger.info(f"Fetched {len(batch)} properties from page {page}, total so far: {len(all_properties)}")
+            page += 1
+
+            # If we got fewer results than requested, we've likely reached the end
+            if len(batch) < batch_size:
+                logger.info(f"Reached end of results at page {page-1}")
+                break
+        except ValueError as ve:
+            logger.error(f"Zillow API error on page {page}: {ve}")
+            break
+
+    zillow.close()
+
+    # Build imagery URLs per property and filter
+    maps_client = _get_maps_client()
     leads: List[LeadItem] = []
     vision = _get_vision_service()
     scorer = LeadScorer()
+    seen_results: dict[str, Dict[str, Any]] = {}
     try:
-        seen_results: dict[str, Dict[str, Any]] = {}
-        for prop in properties:
+        for prop in all_properties:
             lat = prop.get("lat")
             lng = prop.get("lng")
             if lat is None or lng is None:
                 continue
-            img_url = mapbox.build_static_image_url(
+            img_url = maps_client.get_satellite_image_url(
                 longitude=float(lng),
                 latitude=float(lat),
                 zoom=zoom,
                 width_px=size_w,
                 height_px=size_h,
-                marker=settings.mapbox_marker,
             )
 
             # Reuse vision result if we've already processed the same image URL
@@ -212,11 +223,10 @@ def create_leads(payload: LeadsEndpointRequest) -> LeadsEndpointResponse:
                     longitude=float(lng),
                     latitude=float(lat),
                 )
-                # store for reuse
                 seen_results[img_url] = vision_result
 
-            if vision_result.get("solar_present") is True:
-                # Skip homes that already appear to have solar
+            if vision_result.get("solar_present") is True and vision_result.get("confidence", 0) > 0.8:
+                # Skip only if AI is highly confident solar is present; include uncertain as leads
                 continue
 
             score = scorer.score(price=prop.get("price"), living_area=prop.get("livingArea"))
@@ -233,7 +243,7 @@ def create_leads(payload: LeadsEndpointRequest) -> LeadsEndpointResponse:
                         livingArea=prop.get("livingArea"),
                     ),
                     imagery=ImageryMeta(
-                        mapbox_url=img_url,
+                        image_url=img_url,
                         zoom=zoom,
                         size={"w": size_w, "h": size_h},
                     ),
@@ -245,9 +255,13 @@ def create_leads(payload: LeadsEndpointRequest) -> LeadsEndpointResponse:
                     lead_score=score,
                 )
             )
+
+            # Early exit if we have enough leads
+            if len(leads) >= target_leads:
+                break
     finally:
         try:
-            mapbox.close()
+            maps_client.close()
         except Exception:
             logger.debug("Mapbox client close failed", exc_info=True)
         try:
@@ -255,8 +269,8 @@ def create_leads(payload: LeadsEndpointRequest) -> LeadsEndpointResponse:
         except Exception:
             logger.debug("Vision service close failed", exc_info=True)
 
-    # Sort by lead_score desc
-    leads_sorted = sorted(leads, key=lambda x: x.lead_score, reverse=True)
+    # Sort by lead_score desc and limit to target
+    leads_sorted = sorted(leads, key=lambda x: x.lead_score, reverse=True)[:target_leads]
 
     # Convert Pydantic objects to dict for exporter
     leads_serializable = [l.model_dump() if hasattr(l, "model_dump") else l for l in leads_sorted]
@@ -307,15 +321,32 @@ def create_leads_excel(payload: LeadsEndpointRequest) -> Response:
 
     zillow = _get_zillow_client()
     try:
-        properties = zillow.search_properties(
-            location=payload.location,
-            max_properties=max_props,
-            filters=(payload.zillow_filters.model_dump() if payload.zillow_filters else None),
-        )
+        # Fetch properties with pagination for variety
+        properties = []
+        batch_size = 50
+        max_pages = 5
+        page = 1
+
+        while len(properties) < max_props and page <= max_pages:
+            batch = zillow.search_properties(
+                location=payload.location,
+                max_properties=batch_size,
+                filters=(payload.zillow_filters.model_dump() if payload.zillow_filters else None),
+                page=page,
+            )
+            properties.extend(batch)
+            page += 1
+
+            # If we got fewer results than requested, we've likely reached the end
+            if len(batch) < batch_size:
+                break
+
+        # Limit to requested max_properties
+        properties = properties[:max_props]
     finally:
         zillow.close()
 
-    mapbox = _get_mapbox_client()
+    maps_client = _get_maps_client()
     vision = _get_vision_service()
     scorer = LeadScorer()
     leads: List[LeadItem] = []
@@ -326,13 +357,12 @@ def create_leads_excel(payload: LeadsEndpointRequest) -> Response:
             lng = prop.get("lng")
             if lat is None or lng is None:
                 continue
-            img_url = mapbox.build_static_image_url(
+            img_url = maps_client.get_satellite_image_url(
                 longitude=float(lng),
                 latitude=float(lat),
                 zoom=zoom,
                 width_px=size_w,
                 height_px=size_h,
-                marker=settings.mapbox_marker,
             )
             if img_url in seen_results:
                 vision_result = seen_results[img_url]
@@ -360,7 +390,7 @@ def create_leads_excel(payload: LeadsEndpointRequest) -> Response:
                         livingArea=prop.get("livingArea"),
                     ),
                     imagery=ImageryMeta(
-                        mapbox_url=img_url,
+                        image_url=img_url,
                         zoom=zoom,
                         size={"w": size_w, "h": size_h},
                     ),
@@ -374,7 +404,7 @@ def create_leads_excel(payload: LeadsEndpointRequest) -> Response:
             )
     finally:
         try:
-            mapbox.close()
+            maps_client.close()
         except Exception:
             logger.debug("Mapbox client close failed", exc_info=True)
         try:
@@ -415,15 +445,32 @@ def create_leads_csv(payload: LeadsEndpointRequest) -> Response:
 
     zillow = _get_zillow_client()
     try:
-        properties = zillow.search_properties(
-            location=payload.location,
-            max_properties=max_props,
-            filters=(payload.zillow_filters.model_dump() if payload.zillow_filters else None),
-        )
+        # Fetch properties with pagination for variety
+        properties = []
+        batch_size = 50
+        max_pages = 5
+        page = 1
+
+        while len(properties) < max_props and page <= max_pages:
+            batch = zillow.search_properties(
+                location=payload.location,
+                max_properties=batch_size,
+                filters=(payload.zillow_filters.model_dump() if payload.zillow_filters else None),
+                page=page,
+            )
+            properties.extend(batch)
+            page += 1
+
+            # If we got fewer results than requested, we've likely reached the end
+            if len(batch) < batch_size:
+                break
+
+        # Limit to requested max_properties
+        properties = properties[:max_props]
     finally:
         zillow.close()
 
-    mapbox = _get_mapbox_client()
+    maps_client = _get_maps_client()
     vision = _get_vision_service()
     scorer = LeadScorer()
     leads: List[LeadItem] = []
@@ -434,13 +481,12 @@ def create_leads_csv(payload: LeadsEndpointRequest) -> Response:
             lng = prop.get("lng")
             if lat is None or lng is None:
                 continue
-            img_url = mapbox.build_static_image_url(
+            img_url = maps_client.get_satellite_image_url(
                 longitude=float(lng),
                 latitude=float(lat),
                 zoom=zoom,
                 width_px=size_w,
                 height_px=size_h,
-                marker=settings.mapbox_marker,
             )
             if img_url in seen_results:
                 vision_result = seen_results[img_url]
@@ -468,7 +514,7 @@ def create_leads_csv(payload: LeadsEndpointRequest) -> Response:
                         livingArea=prop.get("livingArea"),
                     ),
                     imagery=ImageryMeta(
-                        mapbox_url=img_url,
+                        image_url=img_url,
                         zoom=zoom,
                         size={"w": size_w, "h": size_h},
                     ),
@@ -482,7 +528,7 @@ def create_leads_csv(payload: LeadsEndpointRequest) -> Response:
             )
     finally:
         try:
-            mapbox.close()
+            maps_client.close()
         except Exception:
             logger.debug("Mapbox client close failed", exc_info=True)
         try:

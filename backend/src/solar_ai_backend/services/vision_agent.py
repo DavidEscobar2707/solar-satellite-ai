@@ -65,7 +65,7 @@ class OpenAIVisionService:
             "Content-Type": "application/json",
         }
         system_prompt = (
-            "You are an expert remote-sensing analyst. Classify rooftop PV solar panel presence in nadir (top‑down) Mapbox Static Images (~512×512 px, zoom≈19). The image is centered on the target roof. Ignore any pins/overlays, labels, or cartographic artifacts.\n\n"
+            "You are an expert remote-sensing analyst. Classify rooftop PV solar panel presence in nadir (top‑down) satellite images (~512×512 px, zoom≈20). The image is centered on the target roof. Ignore any pins/overlays, labels, or cartographic artifacts.\n\n"
             "Decision cues: PV modules are dark, rectangular arrays with regular grid/cell pattern and specular highlights; do not confuse skylights, vents/HVAC, dark shingles, cars, or pure shadows.\n\n"
             "Output: Respond with strict JSON only, using this minimal schema:\n"
             "  {\n"
@@ -75,9 +75,9 @@ class OpenAIVisionService:
             "If your confidence is below THRESHOLD, return \"unable\". Do not include any text outside the JSON object."
         )
         user_prompt = (
-            f"Task: Determine if rooftop PV solar panels are present on the central property in this Mapbox tile. Ignore any map pins/markers; they may sit at the exact center.\n\n"
+            f"Task: Determine if rooftop PV solar panels are present on the central property in this satellite image. Ignore any map pins/markers; they may sit at the exact center.\n\n"
             f"Context:\n"
-            f"- Source: Mapbox Static Images (satellite-v9), ~512×512 px, zoom: 19\n"
+            f"- Source: Google Maps Static Satellite Images, ~512×512 px, zoom: {20 if longitude and latitude else 'unknown'}\n"
             f"- Location hint (lon,lat): {longitude},{latitude}\n"
             f"- Decision threshold (THRESHOLD): {threshold}\n\n"
             f"Image:\n"

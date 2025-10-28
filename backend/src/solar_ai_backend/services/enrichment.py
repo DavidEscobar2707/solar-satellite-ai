@@ -27,6 +27,7 @@ class ZillowClient:
         location: str,
         max_properties: int,
         filters: Optional[Dict[str, Any]] = None,
+        page: int = 1,
     ) -> List[Dict[str, Any]]:
         """Return a list of property dicts with at least: address, lat, lng, zpid, price, beds, baths, livingArea."""
         if not self.api_key:
@@ -41,6 +42,8 @@ class ZillowClient:
             "home_type": "Houses",     # Default to houses; adjust if needed
             "limit": max_properties,
         }
+        if page > 1:
+            params["page"] = page
         if filters:
             # Map filters to query params based on Zillow API
             if "minBeds" in filters and filters["minBeds"] is not None:
