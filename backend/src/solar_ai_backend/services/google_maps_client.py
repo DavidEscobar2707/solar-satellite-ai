@@ -33,6 +33,7 @@ class GoogleMapsClient:
         width_px: int = 512,
         height_px: int = 512,
         maptype: str = "satellite",
+        with_marker: bool = True,
     ) -> str:
         """Build a Google Maps Static Image URL for satellite view of a property."""
         # Google Maps Static API URL format
@@ -44,6 +45,9 @@ class GoogleMapsClient:
             f"maptype={maptype}&"
             f"key={self.api_key}"
         )
+        if with_marker:
+            # Add a default marker at the center coordinates
+            url = f"{url}&markers={latitude},{longitude}"
         logger.debug(f"Google Maps Static Image URL: {url}")
         return url
 
@@ -73,6 +77,7 @@ class GoogleMapsClient:
         zoom: int = 20,
         width_px: int = 512,
         height_px: int = 512,
+        with_marker: bool = True,
     ) -> str:
         """Get the URL for a satellite image of the given coordinates."""
         return self.build_static_image_url(
@@ -81,6 +86,7 @@ class GoogleMapsClient:
             zoom=zoom,
             width_px=width_px,
             height_px=height_px,
+            with_marker=with_marker,
         )
 
     def get_satellite_images(
@@ -91,6 +97,7 @@ class GoogleMapsClient:
         zoom: Optional[int] = None,
         width_px: Optional[int] = None,
         height_px: Optional[int] = None,
+        with_marker: bool = True,
     ) -> List[str]:
         """Return a list of static satellite image URLs for the given center.
 
@@ -111,6 +118,7 @@ class GoogleMapsClient:
             zoom=z,
             width_px=w,
             height_px=h,
+            with_marker=with_marker,
         )
 
         # For now, return the same centered image URL repeated 'count' times.
