@@ -28,6 +28,7 @@ def leads_to_excel_b64(leads: List[Dict[str, Any]], *, filename: str = "leads.xl
         "image_url",
         "solar_present",
         "confidence",
+        "vision_lead_score",
         "lead_score",
     ]
     ws.append(headers)
@@ -51,6 +52,7 @@ def leads_to_excel_b64(leads: List[Dict[str, Any]], *, filename: str = "leads.xl
             (img.get("image_url")),
             (v.get("solar_present")),
             (v.get("confidence")),
+            (v.get("lead_score")),
             (lead.get("lead_score")),
         ])
 
@@ -79,6 +81,7 @@ def leads_to_excel_bytes(leads: List[Dict[str, Any]]) -> bytes:
         "image_url",
         "solar_present",
         "confidence",
+        "vision_lead_score",
         "lead_score",
     ]
     ws.append(headers)
@@ -102,6 +105,7 @@ def leads_to_excel_bytes(leads: List[Dict[str, Any]]) -> bytes:
             (img.get("image_url")),
             (v.get("solar_present")),
             (v.get("confidence")),
+            (v.get("lead_score")),
             (lead.get("lead_score")),
         ])
 
@@ -128,6 +132,7 @@ def leads_to_csv_bytes(leads: List[Dict[str, Any]]) -> bytes:
         "image_url",
         "solar_present",
         "confidence",
+        "vision_lead_score",
         "lead_score",
     ]
     
@@ -154,6 +159,7 @@ def leads_to_csv_bytes(leads: List[Dict[str, Any]]) -> bytes:
             "image_url": imagery.get("image_url"),
             "solar_present": vision.get("solar_present"),
             "confidence": vision.get("confidence"),
+            "vision_lead_score": vision.get("lead_score"),
             "lead_score": lead.get("lead_score"),
         }
         writer.writerow(row)

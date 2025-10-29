@@ -251,6 +251,7 @@ def create_leads(payload: LeadsEndpointRequest) -> LeadsEndpointResponse:
                         solar_present=vision_result.get("solar_present"),
                         confidence=vision_result.get("confidence"),
                         model=vision_result.get("model"),
+                        lead_score=vision_result.get("lead_score"),
                     ),
                     lead_score=score,
                 )
@@ -398,6 +399,7 @@ def create_leads_excel(payload: LeadsEndpointRequest) -> Response:
                         solar_present=vision_result.get("solar_present"),
                         confidence=vision_result.get("confidence"),
                         model=vision_result.get("model"),
+                        lead_score=vision_result.get("lead_score"),
                     ),
                     lead_score=score,
                 )
@@ -522,6 +524,7 @@ def create_leads_csv(payload: LeadsEndpointRequest) -> Response:
                         solar_present=vision_result.get("solar_present"),
                         confidence=vision_result.get("confidence"),
                         model=vision_result.get("model"),
+                        lead_score=vision_result.get("lead_score"),
                     ),
                     lead_score=score,
                 )

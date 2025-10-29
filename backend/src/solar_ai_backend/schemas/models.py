@@ -151,6 +151,7 @@ class VisionMeta(BaseModel):
     solar_present: Optional[bool] = None
     confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     model: Optional[str] = None
+    lead_score: Optional[str] = Field(default=None, description="high | medium | low | unknown")
 
 
 class LeadItem(BaseModel):

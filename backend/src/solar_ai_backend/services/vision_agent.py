@@ -65,24 +65,40 @@ class OpenAIVisionService:
             "Content-Type": "application/json",
         }
         system_prompt = (
-            "You are an expert remote-sensing analyst. Classify rooftop PV solar panel presence in nadir (top‑down) satellite images (~512×512 px, zoom≈20). The image is centered on the target roof. Ignore any pins/overlays, labels, or cartographic artifacts.\n\n"
-            "Decision cues: PV modules are dark, rectangular arrays with regular grid/cell pattern and specular highlights; do not confuse skylights, vents/HVAC, dark shingles, cars, or pure shadows.\n\n"
-            "Output: Respond with strict JSON only, using this minimal schema:\n"
-            "  {\n"
-            "    \"answer\": \"yes\" | \"no\" | \"unable\",\n"
-            "    \"confidence\": number\n"
-            "  }\n"
-            "If your confidence is below THRESHOLD, return \"unable\". Do not include any text outside the JSON object."
+            """You are a solar rooftop viability analyst. Your task is to analyze top-down (nadir) satellite images (~512×512 px, zoom≈20) centered on a target building and determine whether photovoltaic (PV) solar panels are visible.
+Ignore any pins, map markers, overlays, or cartographic artifacts.
+Visual cues for solar panels:
+- Dark, rectangular modules arranged in regular grid or array patterns.
+- Subtle specular reflections (shiny spots) consistent across modules.
+- Panels are usually aligned consistently with roof geometry.
+Do NOT confuse panels with:
+- Skylights, vents, HVAC units, cars, tar patches, or pure shadows.
+- Roof texture (dark shingles or tiles) without distinct module boundaries.
+---
+Output Schema (strict JSON only):
+{
+  "answer": "yes" | "no" | "unable",
+  "confidence": number,    // 0–1
+  "lead_score": "high" | "medium" | "low" | "unknown"
+}
+Lead Scoring Rules:
+- "high" → The roof has ample usable space and no visible solar panels (high potential for new installation).
+- "medium" → The roof has limited usable space (e.g., cluttered, shaded, irregular shape) and no visible panels.
+- "low" → The roof already has visible solar panels (installation already present).
+- "unknown" → Image quality or visibility is too poor to assess.
+If your confidence is below THRESHOLD, return "unable" and set "lead_score": "unknown".
+Do not include any text outside the JSON object."""
         )
         user_prompt = (
-            f"Task: Determine if rooftop PV solar panels are present on the central property in this satellite image. Ignore any map pins/markers; they may sit at the exact center.\n\n"
-            f"Context:\n"
-            f"- Source: Google Maps Static Satellite Images, ~512×512 px, zoom: {20 if longitude and latitude else 'unknown'}\n"
-            f"- Location hint (lon,lat): {longitude},{latitude}\n"
-            f"- Decision threshold (THRESHOLD): {threshold}\n\n"
-            f"Image:\n"
-            f"- URL: {image_url}\n\n"
-            f"Return JSON only per the specified schema."
+            f"""Task: Determine if rooftop PV solar panels are present on the central property in this satellite image and estimate the solar lead score based on rooftop space and panel presence.
+Ignore any map pins or labels; they may appear at the exact center.
+Context:
+- Source: Google Maps Static Satellite Image (~512×512 px, zoom: {20 if longitude and latitude else 'unknown'})
+- Location: (lon, lat) = {longitude}, {latitude}
+- Decision threshold (THRESHOLD): {threshold}
+Image URL:
+{image_url}
+Return JSON only per the specified schema."""
         )
         # Build a multimodal chat payload: pass text + image_url so the model
         # actually sees pixels. Ask for JSON-only response.
@@ -137,6 +153,7 @@ class OpenAIVisionService:
         # Map minimal schema to our internal shape
         answer = (parsed.get("answer") or "").strip().lower() if isinstance(parsed, dict) else ""
         confidence = parsed.get("confidence") if isinstance(parsed, dict) else None
+        lead_score = (parsed.get("lead_score") or "unknown") if isinstance(parsed, dict) else "unknown"
 
         if answer in ("yes", "no", "unable"):
             if confidence is not None and isinstance(confidence, (float, int)) and confidence < threshold:
@@ -153,4 +170,5 @@ class OpenAIVisionService:
             "solar_present": solar_present,
             "confidence": confidence,
             "model": use_model,
+            "lead_score": lead_score,
         }
