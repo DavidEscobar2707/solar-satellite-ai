@@ -89,15 +89,20 @@ class ZillowFilters(BaseModel):
     propertyType: Optional[List[str]] = None
     minPrice: Optional[int] = Field(default=None, ge=0)
     maxPrice: Optional[int] = Field(default=None, ge=0)
+    priceRange: Optional[str] = Field(default=None, description="Shorthand 'min-max' string, e.g., '200000-500000'")
     statusType: Optional[str] = Field(default=None)  # e.g., "RecentlySold", "ForSale"
     isNewConstruction: Optional[bool] = Field(default=None)
     isAuction: Optional[bool] = Field(default=None)
     preForeclosure: Optional[bool] = Field(default=None)
     saleByOwner: Optional[str] = Field(default=None)  # e.g., "true"
+    saleByAgent: Optional[bool] = Field(default=None)
+    otherListings: Optional[bool] = Field(default=None)
     maxMonthlyCostPayment: Optional[int] = Field(default=None, ge=0)
     sqft: Optional[int] = Field(default=None, ge=0)
     small: Optional[bool] = Field(default=None)
     large: Optional[bool] = Field(default=None)
+    coordinates: Optional[str] = Field(default=None, description="'lon lat,diameter' (miles)")
+    polygon: Optional[str] = Field(default=None, description="'lon lat,lon1 lat1,...,lon lat' (closed polygon)")
 
 
 class ImageSize(BaseModel):

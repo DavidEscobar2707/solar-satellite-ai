@@ -46,6 +46,11 @@ class ZillowClient:
             params["page"] = page
         if filters:
             # Map filters to query params based on Zillow API
+            def _bool_to_str(v: Any) -> str:
+                if isinstance(v, bool):
+                    return "1" if v else "0"
+                return str(v)
+
             if "minBeds" in filters and filters["minBeds"] is not None:
                 params["beds_min"] = filters["minBeds"]
             if "minBaths" in filters and filters["minBaths"] is not None:
@@ -53,28 +58,50 @@ class ZillowClient:
             if "propertyType" in filters and filters["propertyType"]:
                 # Map propertyType to home_type (e.g., "Houses" for SINGLE_FAMILY)
                 params["home_type"] = filters["propertyType"][0] if filters["propertyType"] else "Houses"
+            # Price filters and optional "priceRange" shorthand (e.g., "200000-500000")
             if "minPrice" in filters and filters["minPrice"] is not None:
                 params["min_price"] = filters["minPrice"]
             if "maxPrice" in filters and filters["maxPrice"] is not None:
                 params["max_price"] = filters["maxPrice"]
+            if "priceRange" in filters and filters["priceRange"]:
+                try:
+                    rng = str(filters["priceRange"]).replace(" ", "")
+                    lo, hi = rng.split("-")
+                    if lo:
+                        params["min_price"] = int(lo)
+                    if hi:
+                        params["max_price"] = int(hi)
+                except Exception:
+                    logger.debug("Ignoring malformed priceRange: %s", filters.get("priceRange"))
             if "statusType" in filters and filters["statusType"] is not None:
                 params["status_type"] = filters["statusType"]
             if "isNewConstruction" in filters and filters["isNewConstruction"] is not None:
-                params["isNewConstruction"] = "1" if filters["isNewConstruction"] else "0"
+                params["isNewConstruction"] = _bool_to_str(filters["isNewConstruction"])  # API expects 1/0
             if "isAuction" in filters and filters["isAuction"] is not None:
-                params["isAuction"] = "1" if filters["isAuction"] else "0"
+                params["isAuction"] = _bool_to_str(filters["isAuction"])  # API expects 1/0
             if "preForeclosure" in filters and filters["preForeclosure"] is not None:
-                params["PreForeclosure"] = "1" if filters["preForeclosure"] else "0"
+                params["PreForeclosure"] = _bool_to_str(filters["preForeclosure"])  # API expects 1/0
+            # FSBO (For Sale By Owner) / sale by agent flags
             if "saleByOwner" in filters and filters["saleByOwner"] is not None:
-                params["saleByOwner"] = filters["saleByOwner"]
+                params["saleByOwner"] = str(filters["saleByOwner"]).lower() if isinstance(filters["saleByOwner"], bool) else filters["saleByOwner"]
+            if "saleByAgent" in filters and filters["saleByAgent"] is not None:
+                params["saleByAgent"] = str(filters["saleByAgent"]).lower() if isinstance(filters["saleByAgent"], bool) else filters["saleByAgent"]
+            # Other listings tab toggle
+            if "otherListings" in filters and filters["otherListings"] is not None:
+                params["otherListings"] = _bool_to_str(filters["otherListings"])  # API expects 1/0
             if "maxMonthlyCostPayment" in filters and filters["maxMonthlyCostPayment"] is not None:
                 params["maxMonthlyCostPayment"] = filters["maxMonthlyCostPayment"]
             if "sqft" in filters and filters["sqft"] is not None:
                 params["sqft"] = filters["sqft"]
             if "small" in filters and filters["small"] is not None:
-                params["small"] = "1" if filters["small"] else "0"
+                params["small"] = _bool_to_str(filters["small"])  # API expects 1/0
             if "large" in filters and filters["large"] is not None:
-                params["large"] = "1" if filters["large"] else "0"
+                params["large"] = _bool_to_str(filters["large"])  # API expects 1/0
+            # Optional spatial alternatives to location (Zillow supports one of location | coordinates | polygon)
+            if "coordinates" in filters and filters["coordinates"]:
+                params["coordinates"] = filters["coordinates"]  # "lon lat,diameter" (miles)
+            if "polygon" in filters and filters["polygon"]:
+                params["polygon"] = filters["polygon"]  # "lon lat,lon1 lat1,...,lon lat" (closed)
 
         headers = {
             "x-rapidapi-host": self.rapidapi_host,
