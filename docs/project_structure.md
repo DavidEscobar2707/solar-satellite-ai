@@ -2,23 +2,23 @@
 
 flowchart TD
  A[User Input: locality/city/ZIP] --> Z[Zillow API: property search]
- Z --> M[Mapbox Static Images: per-property satellite tile]
- M --> V[OpenAI Vision: solar panel detection]
- V --> L[Lead Filter & Scoring]
+ Z --> M[Imagery API: per-property satellite tile]
+ M --> V[OpenAI Vision: backyard analysis]
+ V --> L[Lead Filter & Scoring (landscaping potential)]
  L --> E[FastAPI /api/v1/leads Endpoint]
 
 text
 
 ## Folder Layout
 
-solar-satellite-ai/
+backyardleadai/
 └── backend/
-├── src/solar_ai_backend/
+├── src/backyard_ai_backend/
 │ ├── api/ # FastAPI routers
-│ ├── services/ # Zillow ingestion, Mapbox imagery, OpenAI vision, enrichment
+│ ├── services/ # Zillow ingestion, imagery retrieval, OpenAI Vision backyard classifier, enrichment
 │ ├── schemas/ # Pydantic models
 │ ├── core/ # Inference/runtime utilities
-│ ├── models/ # Vision & data classes
+│ ├── models/ # Vision & data classes (backyard status, lead scoring)
 │ └── config.py # Env & constants loader
 ├── tests/ # Unit & integration tests
 ├── pyproject.toml

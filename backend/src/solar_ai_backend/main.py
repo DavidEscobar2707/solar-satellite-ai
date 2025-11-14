@@ -15,12 +15,19 @@ logging.basicConfig(
 # Load environment variables from .env file
 load_env_file()
 
-app = FastAPI(title="Solar AI Backend", version="0.1.0")
+app = FastAPI(title="BackyardLeadAI Backend", version="0.1.0", description="Backend API for generating landscaping leads by detecting undeveloped backyards")
 
-# Add CORS middleware for Lovable integration
+# Add CORS middleware for frontend integration
+# Note: For production, you may want to use a regex pattern or environment variable for origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://lovable.app", "https://www.lovable.app"],  # Lovable's domains
+    allow_origins=[
+        "https://lovable.app",
+        "https://www.lovable.app",
+        "http://localhost:3000",
+        "http://localhost:3001",
+    ],
+    allow_origin_regex=r"https://.*\.vercel\.app",  # Vercel deployments
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

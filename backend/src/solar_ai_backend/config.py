@@ -13,7 +13,8 @@ class Settings:
         self.environment: str = os.getenv("ENV", "development")
         self.mapbox_access_token: Optional[str] = os.getenv("MAPBOX_ACCESS_TOKEN")
         self.google_maps_api_key: Optional[str] = os.getenv("GOOGLE_MAPS_API_KEY")
-        self.openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY")
+        self.openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY")  # Deprecated, kept for backward compatibility
+        self.gemini_api_key: Optional[str] = os.getenv("GEMINI_API_KEY")
         # Zillow API configuration
         self.zillow_api_key: Optional[str] = os.getenv("ZILLOW_API_KEY")
         self.zillow_api_base: str = os.getenv("ZILLOW_API_BASE", "https://zillow-com1.p.rapidapi.com")
@@ -25,8 +26,10 @@ class Settings:
         self.mapbox_country_filter: str = os.getenv("MAPBOX_COUNTRY", "US")
         # Optional marker for static images (e.g., "pin-s+ff0000" for small red pin; set to empty string to disable)
         self.mapbox_marker: str = os.getenv("MAPBOX_MARKER", "pin-s+ff0000")
-        # Vision API configuration
-        self.vision_model: str = os.getenv("VISION_MODEL", "gpt-4o-mini")
+        # Vision API configuration (using Gemini by default)
+        # Use gemini-2.5-flash as default (latest stable, fast and cheap)
+        # Will auto-fallback to best available model if not found
+        self.vision_model: str = os.getenv("VISION_MODEL", "gemini-2.5-flash")
         self.vision_confidence_threshold: float = float(os.getenv("VISION_CONFIDENCE_THRESHOLD", "0.4"))  # Lowered to include more uncertain properties as leads
         self.vision_timeout_seconds: float = float(os.getenv("VISION_TIMEOUT_SECONDS", "15"))
         # Vision caching to avoid duplicate OpenAI calls for the same image

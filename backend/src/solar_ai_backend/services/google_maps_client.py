@@ -108,7 +108,8 @@ class GoogleMapsClient:
 
         lon, lat = coordinates
         settings = get_settings()
-        z = zoom if zoom is not None else settings.mapbox_zoom
+        # Always use zoom 20 for satellite imagery
+        z = 20
         w = width_px if width_px is not None else settings.mapbox_image_size
         h = height_px if height_px is not None else settings.mapbox_image_size
 

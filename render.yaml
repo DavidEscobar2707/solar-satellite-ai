@@ -1,0 +1,13 @@
+   services:
+     - type: web
+       name: solar-ai-backend
+       env: python
+       buildCommand: pip install -r requirements.txt
+       startCommand: uvicorn solar_ai_backend.main:app --host 0.0.0.0 --port $PORT
+       envVars:
+         - key: ZILLOW_API_KEY
+           sync: false
+         - key: MAPBOX_ACCESS_TOKEN
+           sync: false
+         - key: OPENAI_API_KEY
+           sync: false

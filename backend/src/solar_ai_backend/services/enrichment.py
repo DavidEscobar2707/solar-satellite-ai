@@ -42,6 +42,13 @@ class ZillowClient:
             "home_type": "Houses",     # Default to houses; adjust if needed
             "limit": max_properties,
         }
+        
+        # Apply default filters for wealthy neighborhoods if no filters provided
+        if not filters:
+            params["min_price"] = 1500000  # Default minimum: $1.5M for wealthy neighborhoods
+            params["max_price"] = 5000000  # Default maximum: $5M
+            # Note: keywords filter removed as it may not be supported by Zillow API
+        
         if page > 1:
             params["page"] = page
         if filters:
@@ -63,6 +70,11 @@ class ZillowClient:
                 params["min_price"] = filters["minPrice"]
             if "maxPrice" in filters and filters["maxPrice"] is not None:
                 params["max_price"] = filters["maxPrice"]
+            # Keywords filter - only add if provided (may not be supported by all Zillow API endpoints)
+            if "keywords" in filters and filters["keywords"]:
+                # Note: Some Zillow API endpoints may not support keywords filter
+                # If it causes issues, we can remove it or make it optional
+                params["keywords"] = filters["keywords"]
             if "priceRange" in filters and filters["priceRange"]:
                 try:
                     rng = str(filters["priceRange"]).replace(" ", "")
@@ -97,6 +109,9 @@ class ZillowClient:
                 params["small"] = _bool_to_str(filters["small"])  # API expects 1/0
             if "large" in filters and filters["large"] is not None:
                 params["large"] = _bool_to_str(filters["large"])  # API expects 1/0
+            # Keywords filter (e.g., "backyard" for properties with backyard mentions)
+            if "keywords" in filters and filters["keywords"]:
+                params["keywords"] = filters["keywords"]
             # Optional spatial alternatives to location (Zillow supports one of location | coordinates | polygon)
             if "coordinates" in filters and filters["coordinates"]:
                 params["coordinates"] = filters["coordinates"]  # "lon lat,diameter" (miles)
@@ -146,6 +161,7 @@ class ZillowClient:
                     "beds": item.get("bedrooms") or item.get("beds"),
                     "baths": item.get("bathrooms") or item.get("baths"),
                     "livingArea": item.get("livingArea") or item.get("sqft"),
+                    "lotSize": item.get("lotSize") or item.get("lotSizeSqFt") or item.get("lotAreaValue"),
                 }
             )
         filtered = [p for p in norm if p.get("lat") is not None and p.get("lng") is not None]
@@ -156,15 +172,28 @@ class ZillowClient:
 
 
 class LeadScorer:
-    """Heuristic lead scoring for ranking properties."""
+    """Heuristic lead scoring for ranking properties based on landscaping potential."""
 
-    def score(self, *, price: Optional[float], living_area: Optional[int]) -> float:
-        # Normalize heuristics into [0,1]
+    def score(self, *, price: Optional[float], living_area: Optional[int], lot_size: Optional[int] = None) -> float:
+        # Normalize heuristics into [0,1] for landscaping leads
+        # Prioritize properties with good price, decent living area, and larger lots
         p = 0.0
         if price is not None:
-            # Map price to [0,1] with soft cap
+            # Map price to [0,1] with soft cap (higher value homes = better landscaping potential)
             p = min(max(price / 2_000_000.0, 0.0), 1.0)
         a = 0.0
         if living_area is not None:
+            # Larger homes often have more landscaping potential
             a = min(max(living_area / 4000.0, 0.0), 1.0)
-        return round(0.6 * p + 0.4 * a, 4)
+        l = 0.0
+        if lot_size is not None:
+            # Larger lots = more backyard space for landscaping
+            # Normalize assuming typical lot sizes range from 5000-15000 sqft
+            l = min(max((lot_size - 3000) / 12000.0, 0.0), 1.0)
+        
+        # Weight: price 40%, lot size 40%, living area 20% (lot size is key for landscaping)
+        if lot_size is not None:
+            return round(0.4 * p + 0.4 * l + 0.2 * a, 4)
+        else:
+            # Fallback if lot_size not available
+            return round(0.6 * p + 0.4 * a, 4)

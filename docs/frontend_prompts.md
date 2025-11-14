@@ -1,6 +1,6 @@
-# Frontend Prompts & UX Script (Leads Storefront)
+# Frontend Prompts & UX Script (BackyardLeadAI Storefront)
 
-Purpose: Provide prompts and microcopy for the frontend so US solar installers can buy targeted leads. Flow: search a city/neighborhood → choose lead count → pay with Stripe → receive leads.
+Purpose: Provide prompts and microcopy for the frontend so US landscaping companies can buy targeted backyard development leads. Flow: search a city/neighborhood → choose lead count → pay with Stripe → receive leads.
 
 ## Global UX & Brand
 - Tone: confident, helpful, concise; plain English.
@@ -10,8 +10,8 @@ Purpose: Provide prompts and microcopy for the frontend so US solar installers c
 
 ## System Prompt (for dynamic UI copy)
 ```
-You write production UI copy for a B2B app where US solar installers purchase high‑quality leads.
-Constraints: concise, professional, trustworthy; primary #3B82F6; no solid black; high contrast; plain English; one clear CTA per step; describe deliverables (e.g., “10 verified property leads”); give fixable guidance on errors. Return only UI strings.
+You write production UI copy for a B2B app where US landscaping companies purchase high‑quality backyard development leads.
+Constraints: concise, professional, trustworthy; primary #3B82F6; no solid black; high contrast; plain English; one clear CTA per step; describe deliverables (e.g., “10 verified backyard leads”); give fixable guidance on errors. Return only UI strings.
 ```
 
 ## Flow & Prompts
@@ -19,9 +19,9 @@ Constraints: concise, professional, trustworthy; primary #3B82F6; no solid black
 ### 1) Landing / Search
 - Fields: location (US city/neighborhood), leadCount (default 10)
 - Placeholder: Carmel Valley, San Diego
-- Primary CTA: “Search leads”
-- Headline prompt: 4–6 word headline inviting B2B solar installers to find leads.
-- Subheading prompt: one sentence (≤120 chars) explaining search and buy verified leads.
+- Primary CTA: “Search backyard leads”
+- Headline prompt: 4–6 word headline inviting B2B landscaping companies to find backyard opportunities.
+- Subheading prompt: one sentence (≤120 chars) explaining search and buy verified backyard development leads.
 - Invalid location error: “We couldn’t find that US location. Try a city or neighborhood (e.g., ‘Carmel Valley, San Diego’).”
 
 ### 2) Results / Lead Quantity
@@ -35,38 +35,38 @@ Constraints: concise, professional, trustworthy; primary #3B82F6; no solid black
 - “What you get”:
   - Property addresses with map links
   - Aerial image URLs per property
-  - Solar prediction (yes/no/unable) + confidence
-  - Basic attributes (beds, baths, price estimate when available)
+  - Backyard status (undeveloped/partial/landscaped/uncertain) + confidence
+  - Basic attributes (beds, baths, estimated price, lot size when available)
   - CSV + JSON download
 - CTA: “Pay securely”
 - Trust: “Payments processed by Stripe. You’ll receive your leads instantly after payment.”
 
 ### 4) Success / Delivery
-- Headline: “Your leads are ready”
+- Headline: “Your backyard leads are ready”
 - Body: “Download your files below. We’ve also sent a copy to {email}.”
 - Buttons: Download CSV | Download JSON | Open in map
 - Support: “Questions? Reply to the receipt email and we’ll help.”
 
 ### 5) Empty / Error
-- No results: “No leads found for this location. Try a nearby neighborhood or a larger city.”
+- No results: “No backyard leads found for this location. Try a nearby neighborhood or a larger city.”
 - Payment failed: “Payment didn’t complete. Please try again or use a different card.”
 - Upstream/API: “We’re having trouble fetching data. Please wait a moment and retry.”
 
 ## Component Prompts
 - Autocomplete: “Generate 5 US city/neighborhood suggestions similar to {query}. Return a JSON array of strings.”
-- Email subject: “Your {leadCount} solar leads for {location} are ready”
+- Email subject: “Your {leadCount} backyard leads for {location} are ready”
 - Email body:
 ```
 Hi {companyName},
 
-Thanks for your purchase. Your {leadCount} leads for {location} are ready.
+Thanks for your purchase. Your {leadCount} backyard development leads for {location} are ready.
 - Download CSV: {csvUrl}
 - Download JSON: {jsonUrl}
 
 You can open individual properties using the map links in the files.
 
 Best,
-The NoSolarMap Team
+The BackyardLeadAI Team
 ```
 
 ## API (frontend usage)
@@ -100,4 +100,4 @@ POST /api/v1/leads
 ## Notes
 - Start with 10 leads default; expose 10/25/50/100.
 - Prefer thumbnails without pins.
-- If vision returns “unable”, include the record and mark it in CSV/JSON.
+- If vision returns “uncertain”, include the record and mark it in CSV/JSON.

@@ -21,7 +21,7 @@ from ..schemas.models import (
     VisionMeta,
 )
 from ..services.google_maps_client import GoogleMapsClient
-from ..services.vision_agent import OpenAIVisionService
+from ..services.vision_agent import GeminiVisionService
 from ..services.enrichment import ZillowClient, LeadScorer
 from ..utils.excel_export import leads_to_excel_b64, leads_to_excel_bytes, leads_to_csv_bytes, leads_to_csv_b64
 
@@ -48,8 +48,8 @@ def _get_zillow_client() -> ZillowClient:
     )
 
 
-def _get_vision_service() -> OpenAIVisionService:
-    return OpenAIVisionService()
+def _get_vision_service() -> GeminiVisionService:
+    return GeminiVisionService()
 
 
 @router.post("/validate-location", response_model=LocationResponse)
@@ -128,9 +128,12 @@ def generate_lead(payload: LeadGenerationRequest) -> LeadGenerationResponse:
             RoofAnalysis(
                 image_url=url,
                 bbox=None,
-                confidence=result.get("confidence"),
+                confidence=result.get("backyard_confidence"),
                 mask_url=None,
-                solar_present=result.get("solar_present"),
+                solar_present=None,  # Deprecated
+                backyard_status=result.get("backyard_status"),
+                backyard_confidence=result.get("backyard_confidence"),
+                notes=result.get("notes"),
                 polygons=[],
                 mask_rle=None,
             )
@@ -157,28 +160,57 @@ def create_leads(payload: LeadsEndpointRequest) -> LeadsEndpointResponse:
         payload.vision.confidence_threshold if payload.vision and payload.vision.confidence_threshold is not None
         else settings.vision_confidence_threshold
     )
-    zoom = payload.imagery.zoom if payload.imagery else settings.mapbox_zoom
+    # Always use zoom 20 for Google Maps satellite imagery
+    zoom = 20
     size_w = payload.imagery.size.w if payload.imagery else settings.mapbox_image_size
     size_h = payload.imagery.size.h if payload.imagery else settings.mapbox_image_size
 
     # Fetch leads in batches until we have enough
     target_leads = payload.max_properties or settings.leads_max_properties
     all_properties = []
-    batch_size = 50  # Start with 50 and increase if needed
+    # Use target_leads as batch size, but cap at 50 per page (API limit)
+    batch_size = min(target_leads, 50)
     max_attempts = 5  # Prevent infinite loops
     page = 1  # Start with page 1
 
     zillow = _get_zillow_client()
-    while len(all_properties) < target_leads * 2 and page <= max_attempts:  # Fetch extra to account for filtering
+    
+    # Build default filters for wealthy neighborhoods
+    # Note: keywords filter may not be supported by Zillow API, so we make it optional
+    default_filters = {
+        "minPrice": 1500000,  # $1.5M minimum
+        "maxPrice": 5000000,  # $5M maximum
+        # "keywords": "backyard",  # Removed as it may not be supported or too restrictive
+    }
+    
+    # Merge user filters with defaults (user filters take precedence)
+    if payload.zillow_filters:
+        user_filters = payload.zillow_filters.model_dump(exclude_none=True)
+        default_filters.update(user_filters)
+        final_filters = default_filters
+    else:
+        final_filters = default_filters
+    
+    logger.info(f"Using filters: {final_filters}")
+    logger.info(f"Searching for properties in: {payload.location}")
+    
+    # Fetch properties until we have enough (fetch extra to account for filtering)
+    while len(all_properties) < target_leads * 2 and page <= max_attempts:
+        # Calculate how many more we need
+        remaining = (target_leads * 2) - len(all_properties)
+        current_batch_size = min(batch_size, remaining)
+        
         try:
             batch = zillow.search_properties(
                 location=payload.location,
-                max_properties=batch_size,
-                filters=(payload.zillow_filters.model_dump() if payload.zillow_filters else None),
+                max_properties=current_batch_size,
+                filters=final_filters,
                 page=page,
             )
             all_properties.extend(batch)
             logger.info(f"Fetched {len(batch)} properties from page {page}, total so far: {len(all_properties)}")
+            if len(batch) == 0:
+                logger.warning(f"No properties returned from Zillow API on page {page}. Filters may be too restrictive.")
             page += 1
 
             # If we got fewer results than requested, we've likely reached the end
@@ -190,6 +222,13 @@ def create_leads(payload: LeadsEndpointRequest) -> LeadsEndpointResponse:
             break
 
     zillow.close()
+    
+    logger.info(f"Total properties fetched: {len(all_properties)}")
+    if len(all_properties) == 0:
+        logger.warning("No properties found. This could be due to:")
+        logger.warning("1. Filters too restrictive (price range, keywords)")
+        logger.warning("2. Location has no properties matching criteria")
+        logger.warning("3. Zillow API returned no results")
 
     # Build imagery URLs per property and filter
     maps_client = _get_maps_client()
@@ -225,11 +264,17 @@ def create_leads(payload: LeadsEndpointRequest) -> LeadsEndpointResponse:
                 )
                 seen_results[img_url] = vision_result
 
-            if vision_result.get("solar_present") is True and vision_result.get("confidence", 0) > 0.8:
-                # Skip only if AI is highly confident solar is present; include uncertain as leads
+            # Filter: prioritize undeveloped and partially_developed backyards
+            backyard_status = vision_result.get("backyard_status")
+            if backyard_status == "fully_landscaped":
+                # Skip fully landscaped properties as they're less likely to need landscaping services
                 continue
 
-            score = scorer.score(price=prop.get("price"), living_area=prop.get("livingArea"))
+            score = scorer.score(
+                price=prop.get("price"),
+                living_area=prop.get("livingArea"),
+                lot_size=prop.get("lotSize")
+            )
 
             leads.append(
                 LeadItem(
@@ -248,10 +293,10 @@ def create_leads(payload: LeadsEndpointRequest) -> LeadsEndpointResponse:
                         size={"w": size_w, "h": size_h},
                     ),
                     vision=VisionMeta(
-                        solar_present=vision_result.get("solar_present"),
-                        confidence=vision_result.get("confidence"),
+                        backyard_status=vision_result.get("backyard_status"),
+                        backyard_confidence=vision_result.get("backyard_confidence"),
+                        notes=vision_result.get("notes"),
                         model=vision_result.get("model"),
-                        lead_score=vision_result.get("lead_score"),
                     ),
                     lead_score=score,
                 )
@@ -311,7 +356,8 @@ def create_leads_excel(payload: LeadsEndpointRequest) -> Response:
     # Build leads using the same orchestration as create_leads
     settings = get_settings()
     max_props = payload.max_properties or settings.leads_max_properties
-    zoom = payload.imagery.zoom if payload.imagery else settings.mapbox_zoom
+    # Always use zoom 20 for Google Maps satellite imagery
+    zoom = 20
     size_w = payload.imagery.size.w if payload.imagery else settings.mapbox_image_size
     size_h = payload.imagery.size.h if payload.imagery else settings.mapbox_image_size
     vision_model = payload.vision.model if payload.vision and payload.vision.model else settings.vision_model
@@ -321,28 +367,53 @@ def create_leads_excel(payload: LeadsEndpointRequest) -> Response:
     )
 
     zillow = _get_zillow_client()
+    
+    # Build default filters for wealthy neighborhoods
+    # Note: keywords filter may not be supported by Zillow API, so we make it optional
+    default_filters = {
+        "minPrice": 1500000,  # $1.5M minimum
+        "maxPrice": 5000000,  # $5M maximum
+        # "keywords": "backyard",  # Removed as it may not be supported or too restrictive
+    }
+    
+    # Merge user filters with defaults (user filters take precedence)
+    if payload.zillow_filters:
+        user_filters = payload.zillow_filters.model_dump(exclude_none=True)
+        default_filters.update(user_filters)
+        final_filters = default_filters
+    else:
+        final_filters = default_filters
+    
+    logger.info(f"Using filters: {final_filters}")
+    logger.info(f"Searching for properties in: {payload.location}")
+    
     try:
         # Fetch properties with pagination for variety
         properties = []
-        batch_size = 50
+        # Use max_props as batch size, but cap at 50 per page (API limit)
+        batch_size = min(max_props, 50)
         max_pages = 5
         page = 1
 
         while len(properties) < max_props and page <= max_pages:
+            # Calculate how many more we need
+            remaining = max_props - len(properties)
+            current_batch_size = min(batch_size, remaining)
+            
             batch = zillow.search_properties(
                 location=payload.location,
-                max_properties=batch_size,
-                filters=(payload.zillow_filters.model_dump() if payload.zillow_filters else None),
+                max_properties=current_batch_size,
+                filters=final_filters,
                 page=page,
             )
             properties.extend(batch)
             page += 1
 
             # If we got fewer results than requested, we've likely reached the end
-            if len(batch) < batch_size:
+            if len(batch) < current_batch_size:
                 break
 
-        # Limit to requested max_properties
+        # Limit to requested max_properties (should already be limited, but ensure)
         properties = properties[:max_props]
     finally:
         zillow.close()
@@ -376,9 +447,14 @@ def create_leads_excel(payload: LeadsEndpointRequest) -> Response:
                     latitude=float(lat),
                 )
                 seen_results[img_url] = vision_result
-            if vision_result.get("solar_present") is True:
+            backyard_status = vision_result.get("backyard_status")
+            if backyard_status == "fully_landscaped":
                 continue
-            score = scorer.score(price=prop.get("price"), living_area=prop.get("livingArea"))
+            score = scorer.score(
+                price=prop.get("price"),
+                living_area=prop.get("livingArea"),
+                lot_size=prop.get("lotSize")
+            )
             leads.append(
                 LeadItem(
                     address=prop.get("address"),
@@ -389,6 +465,7 @@ def create_leads_excel(payload: LeadsEndpointRequest) -> Response:
                         beds=prop.get("beds"),
                         baths=prop.get("baths"),
                         livingArea=prop.get("livingArea"),
+                        lotSize=prop.get("lotSize"),
                     ),
                     imagery=ImageryMeta(
                         image_url=img_url,
@@ -396,10 +473,10 @@ def create_leads_excel(payload: LeadsEndpointRequest) -> Response:
                         size={"w": size_w, "h": size_h},
                     ),
                     vision=VisionMeta(
-                        solar_present=vision_result.get("solar_present"),
-                        confidence=vision_result.get("confidence"),
+                        backyard_status=vision_result.get("backyard_status"),
+                        backyard_confidence=vision_result.get("backyard_confidence"),
+                        notes=vision_result.get("notes"),
                         model=vision_result.get("model"),
-                        lead_score=vision_result.get("lead_score"),
                     ),
                     lead_score=score,
                 )
@@ -436,7 +513,8 @@ def create_leads_csv(payload: LeadsEndpointRequest) -> Response:
     # Build leads using the same orchestration as create_leads
     settings = get_settings()
     max_props = payload.max_properties or settings.leads_max_properties
-    zoom = payload.imagery.zoom if payload.imagery else settings.mapbox_zoom
+    # Always use zoom 20 for Google Maps satellite imagery
+    zoom = 20
     size_w = payload.imagery.size.w if payload.imagery else settings.mapbox_image_size
     size_h = payload.imagery.size.h if payload.imagery else settings.mapbox_image_size
     vision_model = payload.vision.model if payload.vision and payload.vision.model else settings.vision_model
@@ -446,28 +524,53 @@ def create_leads_csv(payload: LeadsEndpointRequest) -> Response:
     )
 
     zillow = _get_zillow_client()
+    
+    # Build default filters for wealthy neighborhoods
+    # Note: keywords filter may not be supported by Zillow API, so we make it optional
+    default_filters = {
+        "minPrice": 1500000,  # $1.5M minimum
+        "maxPrice": 5000000,  # $5M maximum
+        # "keywords": "backyard",  # Removed as it may not be supported or too restrictive
+    }
+    
+    # Merge user filters with defaults (user filters take precedence)
+    if payload.zillow_filters:
+        user_filters = payload.zillow_filters.model_dump(exclude_none=True)
+        default_filters.update(user_filters)
+        final_filters = default_filters
+    else:
+        final_filters = default_filters
+    
+    logger.info(f"Using filters: {final_filters}")
+    logger.info(f"Searching for properties in: {payload.location}")
+    
     try:
         # Fetch properties with pagination for variety
         properties = []
-        batch_size = 50
+        # Use max_props as batch size, but cap at 50 per page (API limit)
+        batch_size = min(max_props, 50)
         max_pages = 5
         page = 1
 
         while len(properties) < max_props and page <= max_pages:
+            # Calculate how many more we need
+            remaining = max_props - len(properties)
+            current_batch_size = min(batch_size, remaining)
+            
             batch = zillow.search_properties(
                 location=payload.location,
-                max_properties=batch_size,
-                filters=(payload.zillow_filters.model_dump() if payload.zillow_filters else None),
+                max_properties=current_batch_size,
+                filters=final_filters,
                 page=page,
             )
             properties.extend(batch)
             page += 1
 
             # If we got fewer results than requested, we've likely reached the end
-            if len(batch) < batch_size:
+            if len(batch) < current_batch_size:
                 break
 
-        # Limit to requested max_properties
+        # Limit to requested max_properties (should already be limited, but ensure)
         properties = properties[:max_props]
     finally:
         zillow.close()
@@ -501,9 +604,14 @@ def create_leads_csv(payload: LeadsEndpointRequest) -> Response:
                     latitude=float(lat),
                 )
                 seen_results[img_url] = vision_result
-            if vision_result.get("solar_present") is True:
+            backyard_status = vision_result.get("backyard_status")
+            if backyard_status == "fully_landscaped":
                 continue
-            score = scorer.score(price=prop.get("price"), living_area=prop.get("livingArea"))
+            score = scorer.score(
+                price=prop.get("price"),
+                living_area=prop.get("livingArea"),
+                lot_size=prop.get("lotSize")
+            )
             leads.append(
                 LeadItem(
                     address=prop.get("address"),
@@ -514,6 +622,7 @@ def create_leads_csv(payload: LeadsEndpointRequest) -> Response:
                         beds=prop.get("beds"),
                         baths=prop.get("baths"),
                         livingArea=prop.get("livingArea"),
+                        lotSize=prop.get("lotSize"),
                     ),
                     imagery=ImageryMeta(
                         image_url=img_url,
@@ -521,10 +630,10 @@ def create_leads_csv(payload: LeadsEndpointRequest) -> Response:
                         size={"w": size_w, "h": size_h},
                     ),
                     vision=VisionMeta(
-                        solar_present=vision_result.get("solar_present"),
-                        confidence=vision_result.get("confidence"),
+                        backyard_status=vision_result.get("backyard_status"),
+                        backyard_confidence=vision_result.get("backyard_confidence"),
+                        notes=vision_result.get("notes"),
                         model=vision_result.get("model"),
-                        lead_score=vision_result.get("lead_score"),
                     ),
                     lead_score=score,
                 )

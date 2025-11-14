@@ -1,6 +1,6 @@
 # `/api/v1/leads` Endpoint
 
-Creates and returns solar sales leads using Zillow → Mapbox → OpenAI Vision.
+Creates and returns landscaping sales leads using Zillow → satellite imagery → OpenAI Vision to find homes with undeveloped or underused backyards.
 
 ## `POST` `/api/v1/leads`
 
@@ -14,11 +14,11 @@ Request body:
     "minBaths": 2,
     "propertyType": ["SINGLE_FAMILY"]
   },
-  "imagery": {                   // optional; Mapbox imagery params
+  "imagery": {                   // optional; imagery provider params
     "zoom": 18,
     "size": { "w": 512, "h": 512 }
   },
-  "vision": {                    // optional; OpenAI vision params
+  "vision": {                    // optional; OpenAI Vision params
     "model": "gpt-4o-mini",
     "confidence_threshold": 0.6
   }
@@ -39,19 +39,21 @@ Response body:
         "price": 1850000,
         "beds": 4,
         "baths": 3,
-        "livingArea": 2650
+        "livingArea": 2650,
+        "lotSize": 6500
       },
       "imagery": {
-        "mapbox_url": "https://api.mapbox.com/styles/v1/...",
-        "zoom": 18,
+        "image_url": "https://maps.googleapis.com/maps/api/staticmap?...",
+        "zoom": 20,
         "size": { "w": 512, "h": 512 }
       },
       "vision": {
-        "solar_present": false,
-        "confidence": 0.82,
+        "backyard_status": "undeveloped",      // undeveloped | partially_developed | fully_landscaped | uncertain
+        "backyard_confidence": 0.82,
+        "notes": "Large, mostly bare backyard with visible dirt/grass and no pool or hardscape.",
         "model": "gpt-4o-mini"
       },
-      "lead_score": 0.77
+      "lead_score": 0.86                      // 0–1, higher = better landscaping opportunity
     }
   ]
 }
@@ -59,12 +61,12 @@ Response body:
 
 ### Processing
 1. Resolve `location` to city/ZIP context for Zillow search.
-2. Query Zillow API for property coordinates and metadata.
-3. For each property, fetch a satellite tile from Mapbox.
-4. Run OpenAI Vision to classify rooftop solar presence.
-5. Score and filter: return properties with `solar_present=false` ordered by score.
+2. Query Zillow API with pagination for property variety (pages 1-5, up to `max_properties` per page).
+3. For each property, fetch a satellite tile (e.g., from Google Maps Static API).
+4. Run OpenAI Vision to classify backyard status and identify undeveloped or underused outdoor space.
+5. Score and filter: prioritize properties with `backyard_status="undeveloped"` or `partially_developed` ordered by landscaping potential.
 
 ### Errors
 - `400` invalid input
-- `502` Zillow/Mapbox/OpenAI upstream failure
+- `502` Zillow/imagery provider/OpenAI upstream failure
 - `500` internal error

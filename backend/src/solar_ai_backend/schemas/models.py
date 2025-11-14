@@ -14,8 +14,9 @@ class Lead(BaseModel):
     latitude: Optional[float] = Field(default=None, description="Latitude of the property centroid")
     longitude: Optional[float] = Field(default=None, description="Longitude of the property centroid")
     wealth_percentile: Optional[int] = Field(default=None, ge=0, le=100, description="ZIP code wealth percentile")
-    confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Confidence score for solar detection")
-    solar_present: Optional[bool] = Field(default=None, description="True if panels detected, False if absent, None if uncertain")
+    confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Confidence score for backyard detection")
+    solar_present: Optional[bool] = Field(default=None, description="Deprecated: kept for backward compatibility")
+    backyard_status: Optional[str] = Field(default=None, description="undeveloped | partially_developed | fully_landscaped | uncertain")
 
 
 class LeadsResponse(BaseModel):
@@ -59,7 +60,10 @@ class RoofAnalysis(BaseModel):
     bbox: Optional[List[int]] = None
     confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     mask_url: Optional[str] = None
-    solar_present: Optional[bool] = None
+    solar_present: Optional[bool] = None  # Deprecated, kept for backward compatibility
+    backyard_status: Optional[str] = Field(default=None, description="undeveloped | partially_developed | fully_landscaped | uncertain")
+    backyard_confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    notes: Optional[str] = None
     polygons: Optional[List[List[Tuple[float, float]]]] = None
     mask_rle: Optional[str] = None
 
@@ -101,6 +105,7 @@ class ZillowFilters(BaseModel):
     sqft: Optional[int] = Field(default=None, ge=0)
     small: Optional[bool] = Field(default=None)
     large: Optional[bool] = Field(default=None)
+    keywords: Optional[str] = Field(default=None, description="Search keywords (e.g., 'backyard')")
     coordinates: Optional[str] = Field(default=None, description="'lon lat,diameter' (miles)")
     polygon: Optional[str] = Field(default=None, description="'lon lat,lon1 lat1,...,lon lat' (closed polygon)")
 
@@ -116,7 +121,7 @@ class ImageryParams(BaseModel):
 
 
 class VisionParams(BaseModel):
-    model: str = Field(default="gpt-4o-mini")
+    model: str = Field(default="gemini-2.5-flash")
     confidence_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
 
 
@@ -139,6 +144,7 @@ class ZillowMeta(BaseModel):
     beds: Optional[int] = None
     baths: Optional[float] = None
     livingArea: Optional[int] = None
+    lotSize: Optional[int] = None
 
 
 class ImageryMeta(BaseModel):
@@ -148,10 +154,10 @@ class ImageryMeta(BaseModel):
 
 
 class VisionMeta(BaseModel):
-    solar_present: Optional[bool] = None
-    confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    backyard_status: Optional[str] = Field(default=None, description="undeveloped | partially_developed | fully_landscaped | uncertain")
+    backyard_confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    notes: Optional[str] = Field(default=None, description="Brief explanation of backyard condition")
     model: Optional[str] = None
-    lead_score: Optional[str] = Field(default=None, description="high | medium | low | unknown")
 
 
 class LeadItem(BaseModel):

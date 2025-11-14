@@ -25,10 +25,11 @@ def leads_to_excel_b64(leads: List[Dict[str, Any]], *, filename: str = "leads.xl
         "beds",
         "baths",
         "livingArea",
+        "lotSize",
         "image_url",
-        "solar_present",
-        "confidence",
-        "vision_lead_score",
+        "backyard_status",
+        "backyard_confidence",
+        "notes",
         "lead_score",
     ]
     ws.append(headers)
@@ -49,10 +50,11 @@ def leads_to_excel_b64(leads: List[Dict[str, Any]], *, filename: str = "leads.xl
             (z.get("beds")),
             (z.get("baths")),
             (z.get("livingArea")),
+            (z.get("lotSize")),
             (img.get("image_url")),
-            (v.get("solar_present")),
-            (v.get("confidence")),
-            (v.get("lead_score")),
+            (v.get("backyard_status")),
+            (v.get("backyard_confidence")),
+            (v.get("notes")),
             (lead.get("lead_score")),
         ])
 
@@ -78,10 +80,11 @@ def leads_to_excel_bytes(leads: List[Dict[str, Any]]) -> bytes:
         "beds",
         "baths",
         "livingArea",
+        "lotSize",
         "image_url",
-        "solar_present",
-        "confidence",
-        "vision_lead_score",
+        "backyard_status",
+        "backyard_confidence",
+        "notes",
         "lead_score",
     ]
     ws.append(headers)
@@ -102,10 +105,11 @@ def leads_to_excel_bytes(leads: List[Dict[str, Any]]) -> bytes:
             (z.get("beds")),
             (z.get("baths")),
             (z.get("livingArea")),
+            (z.get("lotSize")),
             (img.get("image_url")),
-            (v.get("solar_present")),
-            (v.get("confidence")),
-            (v.get("lead_score")),
+            (v.get("backyard_status")),
+            (v.get("backyard_confidence")),
+            (v.get("notes")),
             (lead.get("lead_score")),
         ])
 
@@ -129,10 +133,11 @@ def leads_to_csv_bytes(leads: List[Dict[str, Any]]) -> bytes:
         "beds",
         "baths",
         "livingArea",
+        "lotSize",
         "image_url",
-        "solar_present",
-        "confidence",
-        "vision_lead_score",
+        "backyard_status",
+        "backyard_confidence",
+        "notes",
         "lead_score",
     ]
     
@@ -156,10 +161,11 @@ def leads_to_csv_bytes(leads: List[Dict[str, Any]]) -> bytes:
             "beds": zillow.get("beds"),
             "baths": zillow.get("baths"),
             "livingArea": zillow.get("livingArea"),
+            "lotSize": zillow.get("lotSize"),
             "image_url": imagery.get("image_url"),
-            "solar_present": vision.get("solar_present"),
-            "confidence": vision.get("confidence"),
-            "vision_lead_score": vision.get("lead_score"),
+            "backyard_status": vision.get("backyard_status"),
+            "backyard_confidence": vision.get("backyard_confidence"),
+            "notes": vision.get("notes"),
             "lead_score": lead.get("lead_score"),
         }
         writer.writerow(row)
