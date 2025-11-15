@@ -1,7 +1,8 @@
  'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, Suspense, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
+import Image from 'next/image'
 import axios from 'axios'
 
 interface Lead {
@@ -34,13 +35,7 @@ function ResultsContent() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    if (location) {
-      fetchLeads()
-    }
-  }, [location, leadCount])
-
-  const fetchLeads = async () => {
+  const fetchLeads = useCallback(async () => {
     setLoading(true)
     setError('')
 
@@ -57,7 +52,13 @@ function ResultsContent() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [location, leadCount])
+
+  useEffect(() => {
+    if (location) {
+      fetchLeads()
+    }
+  }, [location, leadCount, fetchLeads])
 
   const handleContinue = () => {
     router.push(`/checkout?location=${encodeURIComponent(location)}&count=${leadCount}`)
@@ -112,9 +113,11 @@ function ResultsContent() {
                 <div className="grid gap-4 md:grid-cols-2">
                   {leads.slice(0, 6).map((lead, idx) => (
                     <div key={idx} className="border border-gray-200 rounded-lg p-4">
-                      <img
+                      <Image
                         src={lead.imagery.image_url}
                         alt={lead.address}
+                        width={400}
+                        height={128}
                         className="w-full h-32 object-cover rounded mb-2"
                       />
                       <p className="font-medium text-sm">{lead.address}</p>
