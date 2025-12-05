@@ -16,9 +16,9 @@ class Settings:
         self.openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY")  # Deprecated, kept for backward compatibility
         self.gemini_api_key: Optional[str] = os.getenv("GEMINI_API_KEY")
         # Zillow API configuration
-        self.zillow_api_key: Optional[str] = os.getenv("ZILLOW_API_KEY")
-        self.zillow_api_base: str = os.getenv("ZILLOW_API_BASE", "https://zillow-com1.p.rapidapi.com")
-        self.zillow_rapidapi_host: str = os.getenv("ZILLOW_RAPIDAPI_HOST", "zillow-com1.p.rapidapi.com")
+        self.zillow_api_key: Optional[str] = os.getenv("ZILLOW_API_KEY", "0fcca2d0d1msh20ec06b3bdf039ep17390cjsn1197d3541dc3")
+        self.zillow_api_base: str = os.getenv("ZILLOW_API_BASE", "https://zllw-working-api.p.rapidapi.com")
+        self.zillow_rapidapi_host: str = os.getenv("ZILLOW_RAPIDAPI_HOST", "zllw-working-api.p.rapidapi.com")
         # Map image defaults
         self.mapbox_style: str = os.getenv("MAPBOX_STYLE", "mapbox/satellite-v9")
         self.mapbox_zoom: int = int(os.getenv("MAPBOX_ZOOM", "20"))
