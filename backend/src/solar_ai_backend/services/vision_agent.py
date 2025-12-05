@@ -21,13 +21,16 @@ class GeminiVisionService:
 
     def __init__(self) -> None:
         self.settings = get_settings()
-        if not genai:
+        self._genai_available = genai is not None
+
+        if not self._genai_available:
             logger.error("google-generativeai package not installed. Vision service will not work.")
             self._available_models = []
             return
 
         if not self.settings.gemini_api_key:
             logger.warning("GEMINI_API_KEY not configured; GeminiVisionService will no-op")
+            self._available_models = []
         else:
             genai.configure(api_key=self.settings.gemini_api_key)
             # Try to get available models on initialization
@@ -93,7 +96,7 @@ class GeminiVisionService:
         
         logger.info(f"Using vision model: {use_model}, Gemini API key configured: {bool(self.settings.gemini_api_key)}")
         
-        if not genai:
+        if not self._genai_available:
             logger.error("google-generativeai package not available. Cannot perform vision analysis.")
             return {"backyard_status": "uncertain", "backyard_confidence": 0.0, "notes": "google-generativeai package not installed", "model": use_model}
 
