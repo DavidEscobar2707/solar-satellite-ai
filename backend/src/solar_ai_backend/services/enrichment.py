@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 class ZillowClient:
     """Zillow property discovery client, adapted for RapidAPI."""
 
-    def __init__(self, *, api_key: str, base_url: str, rapidapi_host: str = "zillow-com1.p.rapidapi.com", timeout_seconds: float = 15.0) -> None:
+    def __init__(self, *, api_key: str, base_url: str, rapidapi_host: str = "zllw-working-api.p.rapidapi.com", timeout_seconds: float = 15.0) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.rapidapi_host = rapidapi_host
@@ -35,88 +35,104 @@ class ZillowClient:
         if not location:
             return []
 
-        # Build query params based on RapidAPI example
+        # Build query params based on new RapidAPI Zillow API
         params = {
             "location": location,
-            "status_type": "ForSale",  # Default to for-sale properties
-            "home_type": "Houses",     # Default to houses; adjust if needed
-            "limit": max_properties,
+            "page": page,
+            "sortOrder": "Homes_for_you",
+            "listingStatus": "Sold",  # Default to sold properties as per example
+            "bed_min": "No_Min",
+            "bed_max": "No_Max",
+            "bathrooms": "Any",
+            "homeType": "Houses,Townhomes",
+            "maxHOA": "Any",
+            "listingType": "By_Agent",
+            "listingTypeOptions": "Agent listed,New Construction,Fore-closures,Auctions",
+            "parkingSpots": "Any",
+            "mustHaveBasement": "No",
+            "daysOnZillow": "Any",
+            "soldInLast": "Any",
         }
-        
-        # Apply default filters for wealthy neighborhoods if no filters provided
-        if not filters:
-            params["min_price"] = 1500000  # Default minimum: $1.5M for wealthy neighborhoods
-            params["max_price"] = 5000000  # Default maximum: $5M
-            # Note: keywords filter removed as it may not be supported by Zillow API
-        
-        if page > 1:
-            params["page"] = page
-        if filters:
-            # Map filters to query params based on Zillow API
-            def _bool_to_str(v: Any) -> str:
-                if isinstance(v, bool):
-                    return "1" if v else "0"
-                return str(v)
 
-            if "minBeds" in filters and filters["minBeds"] is not None:
-                params["beds_min"] = filters["minBeds"]
-            if "minBaths" in filters and filters["minBaths"] is not None:
-                params["baths_min"] = filters["minBaths"]
-            if "propertyType" in filters and filters["propertyType"]:
-                # Map propertyType to home_type (e.g., "Houses" for SINGLE_FAMILY)
-                params["home_type"] = filters["propertyType"][0] if filters["propertyType"] else "Houses"
-            # Price filters and optional "priceRange" shorthand (e.g., "200000-500000")
+        # Apply default price range for wealthy neighborhoods if no filters provided
+        if not filters:
+            params["listPriceRange"] = "min:500000,max:1000000"  # Default price range
+        if filters:
+            # Map filters to new API parameter format
+            # Price filters
+            min_price = None
+            max_price = None
+
             if "minPrice" in filters and filters["minPrice"] is not None:
-                params["min_price"] = filters["minPrice"]
+                min_price = filters["minPrice"]
             if "maxPrice" in filters and filters["maxPrice"] is not None:
-                params["max_price"] = filters["maxPrice"]
-            # Keywords filter - only add if provided (may not be supported by all Zillow API endpoints)
-            if "keywords" in filters and filters["keywords"]:
-                # Note: Some Zillow API endpoints may not support keywords filter
-                # If it causes issues, we can remove it or make it optional
-                params["keywords"] = filters["keywords"]
+                max_price = filters["maxPrice"]
             if "priceRange" in filters and filters["priceRange"]:
                 try:
                     rng = str(filters["priceRange"]).replace(" ", "")
                     lo, hi = rng.split("-")
-                    if lo:
-                        params["min_price"] = int(lo)
-                    if hi:
-                        params["max_price"] = int(hi)
+                    if lo and not min_price:
+                        min_price = int(lo)
+                    if hi and not max_price:
+                        max_price = int(hi)
                 except Exception:
                     logger.debug("Ignoring malformed priceRange: %s", filters.get("priceRange"))
+
+            if min_price is not None or max_price is not None:
+                min_str = f"min:{min_price}" if min_price else ""
+                max_str = f"max:{max_price}" if max_price else ""
+                if min_str and max_str:
+                    params["listPriceRange"] = f"{min_str},{max_str}"
+                elif min_str:
+                    params["listPriceRange"] = min_str
+                elif max_str:
+                    params["listPriceRange"] = max_str
+
+            # Bedrooms
+            if "minBeds" in filters and filters["minBeds"] is not None:
+                params["bed_min"] = str(filters["minBeds"])
+            if "maxBeds" in filters and filters["maxBeds"] is not None:
+                params["bed_max"] = str(filters["maxBeds"])
+
+            # Bathrooms
+            if "minBaths" in filters and filters["minBaths"] is not None:
+                params["bathrooms"] = str(filters["minBaths"])
+
+            # Property type
+            if "propertyType" in filters and filters["propertyType"]:
+                if isinstance(filters["propertyType"], list):
+                    # Map property types to API format
+                    type_mapping = {
+                        "SINGLE_FAMILY": "Houses",
+                        "CONDO": "Condos",
+                        "TOWNHOUSE": "Townhomes",
+                        "MULTI_FAMILY": "Multi-family",
+                        "LAND": "Lots",
+                        "OTHER": "Other"
+                    }
+                    mapped_types = []
+                    for pt in filters["propertyType"]:
+                        mapped = type_mapping.get(pt, pt)
+                        if mapped not in mapped_types:
+                            mapped_types.append(mapped)
+                    if mapped_types:
+                        params["homeType"] = ",".join(mapped_types)
+                else:
+                    params["homeType"] = str(filters["propertyType"])
+
+            # Listing status
             if "statusType" in filters and filters["statusType"] is not None:
-                params["status_type"] = filters["statusType"]
-            if "isNewConstruction" in filters and filters["isNewConstruction"] is not None:
-                params["isNewConstruction"] = _bool_to_str(filters["isNewConstruction"])  # API expects 1/0
-            if "isAuction" in filters and filters["isAuction"] is not None:
-                params["isAuction"] = _bool_to_str(filters["isAuction"])  # API expects 1/0
-            if "preForeclosure" in filters and filters["preForeclosure"] is not None:
-                params["PreForeclosure"] = _bool_to_str(filters["preForeclosure"])  # API expects 1/0
-            # FSBO (For Sale By Owner) / sale by agent flags
-            if "saleByOwner" in filters and filters["saleByOwner"] is not None:
-                params["saleByOwner"] = str(filters["saleByOwner"]).lower() if isinstance(filters["saleByOwner"], bool) else filters["saleByOwner"]
-            if "saleByAgent" in filters and filters["saleByAgent"] is not None:
-                params["saleByAgent"] = str(filters["saleByAgent"]).lower() if isinstance(filters["saleByAgent"], bool) else filters["saleByAgent"]
-            # Other listings tab toggle
-            if "otherListings" in filters and filters["otherListings"] is not None:
-                params["otherListings"] = _bool_to_str(filters["otherListings"])  # API expects 1/0
-            if "maxMonthlyCostPayment" in filters and filters["maxMonthlyCostPayment"] is not None:
-                params["maxMonthlyCostPayment"] = filters["maxMonthlyCostPayment"]
-            if "sqft" in filters and filters["sqft"] is not None:
-                params["sqft"] = filters["sqft"]
-            if "small" in filters and filters["small"] is not None:
-                params["small"] = _bool_to_str(filters["small"])  # API expects 1/0
-            if "large" in filters and filters["large"] is not None:
-                params["large"] = _bool_to_str(filters["large"])  # API expects 1/0
-            # Keywords filter (e.g., "backyard" for properties with backyard mentions)
+                status_mapping = {
+                    "ForSale": "For Sale",
+                    "RecentlySold": "Sold",
+                    "ForRent": "For Rent"
+                }
+                params["listingStatus"] = status_mapping.get(filters["statusType"], filters["statusType"])
+
+            # Keywords (if supported by this endpoint)
             if "keywords" in filters and filters["keywords"]:
+                # Note: This endpoint might not support keywords, but we'll include it for compatibility
                 params["keywords"] = filters["keywords"]
-            # Optional spatial alternatives to location (Zillow supports one of location | coordinates | polygon)
-            if "coordinates" in filters and filters["coordinates"]:
-                params["coordinates"] = filters["coordinates"]  # "lon lat,diameter" (miles)
-            if "polygon" in filters and filters["polygon"]:
-                params["polygon"] = filters["polygon"]  # "lon lat,lon1 lat1,...,lon lat" (closed)
 
         headers = {
             "x-rapidapi-host": self.rapidapi_host,
@@ -124,12 +140,12 @@ class ZillowClient:
         }
 
         # Expanded logging for debugging and comparison with Postman
-        logger.info(f"Making RapidAPI request to: {f'{self.base_url}/propertyExtendedSearch'}")
+        logger.info(f"Making RapidAPI request to: {f'{self.base_url}/search/byaddress'}")
         logger.info(f"Query params: {params}")
         logger.info(f"Headers: {headers}")
 
         try:
-            resp = self._http.get(f"{self.base_url}/propertyExtendedSearch", params=params, headers=headers)
+            resp = self._http.get(f"{self.base_url}/search/byaddress", params=params, headers=headers)
 
             # Log response details for debugging
             logger.info(f"Response status: {resp.status_code}")
@@ -147,21 +163,52 @@ class ZillowClient:
 
         # Parse RapidAPI response (assumes a structure like {"results": [...]})
         # Adjust this based on actual RapidAPI response format (e.g., it might be {"props": [...]})
-        results = data.get("props") or data.get("results") or []  # Fallback if key differs
+        # Parse new RapidAPI response structure with searchResults
+        search_results = data.get("searchResults") or {}
+        results = []
+        if isinstance(search_results, dict):
+            # searchResults is an object with numeric keys like "0", "1", etc.
+            for key, result in search_results.items():
+                if isinstance(result, dict) and "property" in result:
+                    results.append(result["property"])
+        elif isinstance(search_results, list):
+            # Fallback in case it's an array
+            results = search_results
         norm: List[Dict[str, Any]] = []
         for item in results:
-            # Normalize fields (RapidAPI might use different keys, e.g., "price" vs "listPrice")
+            # Normalize fields based on new API structure
+            # Extract location data
+            location_data = item.get("location", {})
+            address_data = item.get("address", {})
+
+            # Extract listing data
+            listing_data = item.get("listing", {})
+
+            # Build address string
+            address_parts = []
+            if address_data.get("streetAddress"):
+                address_parts.append(address_data["streetAddress"])
+            city_state_zip = []
+            if address_data.get("city"):
+                city_state_zip.append(address_data["city"])
+            if address_data.get("state"):
+                city_state_zip.append(address_data["state"])
+            if address_data.get("zipcode"):
+                city_state_zip.append(address_data["zipcode"])
+            if city_state_zip:
+                address_parts.append(", ".join(city_state_zip))
+
             norm.append(
                 {
-                    "address": item.get("address") or f"{item.get('streetAddress', '')}, {item.get('city', '')}, {item.get('state', '')} {item.get('zipcode', '')}",
-                    "lat": item.get("latitude") or item.get("lat"),
-                    "lng": item.get("longitude") or item.get("lng"),
+                    "address": " ".join(address_parts) if address_parts else item.get("address", ""),
+                    "lat": location_data.get("latitude"),
+                    "lng": location_data.get("longitude"),
                     "zpid": str(item.get("zpid")) if item.get("zpid") else None,
-                    "price": item.get("price") or item.get("listPrice"),
-                    "beds": item.get("bedrooms") or item.get("beds"),
-                    "baths": item.get("bathrooms") or item.get("baths"),
-                    "livingArea": item.get("livingArea") or item.get("sqft"),
-                    "lotSize": item.get("lotSize") or item.get("lotSizeSqFt") or item.get("lotAreaValue"),
+                    "price": listing_data.get("price", {}).get("value") or item.get("price"),
+                    "beds": item.get("bedrooms"),
+                    "baths": item.get("bathrooms"),
+                    "livingArea": item.get("livingArea"),
+                    "lotSize": item.get("lotSizeWithUnit", {}).get("lotSize") or item.get("lotSize"),
                 }
             )
         filtered = [p for p in norm if p.get("lat") is not None and p.get("lng") is not None]
